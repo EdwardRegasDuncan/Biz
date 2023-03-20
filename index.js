@@ -4,7 +4,7 @@ const { Client, Collection, Events, GatewayIntentBits} = require('discord.js');
 const { Configuration, OpenAIApi } = require('openai');
 require('dotenv').config();
 
-const client = new Client({intents: [GatewayIntentBits.Guilds] });
+const client = new Client({intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
@@ -21,54 +21,26 @@ for (const file of commandFiles) {
     }
 }
 
+const eventsPath = path.join(__dirname, 'events');
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+
+// create listeners for each event
+for (const file of eventFiles) {
+    const filePath = path.join(eventsPath, file);
+    const event = require(filePath);
+    if (event.once) {
+        client.once(event.name, (...args) => event.execute(...args));
+    } else {
+        client.on(event.name, (...args) => event.execute(...args));
+        console.log(`Event ${file} loaded`)
+    }
+}
+
 const configuration = new Configuration({
     organization: process.env.ORGANIZATION_ID,
-    apiKey: process.env.OPENAI_API_KEY,
-});
-const gpt = new OpenAIApi(configuration);
-
-client.on('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
+    apiKey: process.env.OPEN_AI_KEY,
 });
 
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-    console.log(`Detected: ${interaction}`);
-
-    const command = interaction.client.commands.get(interaction.commandName);
-
-	if (!command) {
-		console.error(`No command matching ${interaction.commandName} was found.`);
-		return;
-	}
-
-	try {
-		await command.execute(interaction);
-	} catch (error) {
-		console.error(error);
-		if (interaction.replied || interaction.deferred) {
-			await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
-		} else {
-			await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-		}
-	}
-});
-
-
-
-// client.on('message', async (msg) => {
-//     console.log(`Message received: ${msg.content}`)
-//     if (msg.channel.name === 'general') {
-//         const response = await gpt.complete({
-//             prompt: msg.content,
-//             maxTokens: 100,
-//             n: 1,
-//             stream: false,
-//             stop: '\n',
-//     });
-
-//     msg.channel.send(response.choices[0].text);
-//     }
-// });
+client.gpt = new OpenAIApi(configuration);
 
 client.login(process.env.DISCORD_TOKEN);
